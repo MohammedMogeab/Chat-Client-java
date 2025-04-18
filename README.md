@@ -1,2 +1,2 @@
-chat app [chat.png]
-**ai chat** [aichat.png]
+chat app [chat.jpg]
+**ai chat** [aichat.jpg]
