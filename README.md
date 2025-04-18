@@ -1,2 +1,2 @@
-chat app [chat.jpg]
-**ai chat** [aichat.jpg]
+![chat app](chat.jpg)
+![ai chat](aichat.jpg)
