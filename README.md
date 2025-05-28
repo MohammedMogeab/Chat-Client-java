@@ -1,3 +1,29 @@
+<div align="center">
+
+![Java](https://img.shields.io/badge/Java-24-blue)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.0-green)
+![JavaFX](https://img.shields.io/badge/JavaFX-UI-orange)
+![CSS](https://img.shields.io/badge/CSS3-Design-blueviolet)
+![MySQL](https://img.shields.io/badge/MySQL-Database-lightgrey)
+![SQLite](https://img.shields.io/badge/SQLite-Lightweight_DB-darkblue)
+![Socket](https://img.shields.io/badge/Socket_Programming-Realtime-orange)
+
+</div>
+
+### 💬 Chat App Project - Tech Stack
+
+**Languages & Frameworks:**
+- Java
+- Spring Boot (for backend and Ollama integration)
+- JavaFX (for desktop UI)
+- CSS (for styling)
+
+**Communication & Database:**
+- Socket Programming (for real-time chat)
+- MySQL & SQLite (for database storage)
+
+---
+
 ### 📌 Team Workflow & Contribution Rules
 
 As a team working on this Chat App, we follow these collaboration rules to keep our project organized, efficient, and conflict-free.
@@ -74,7 +100,7 @@ Add group chat feature with UI support
 Fix null pointer bug in login screen
 Improve responsiveness of message list
 ```
-
+-
 
 ### 🖼️ UI/UX Screenshots of Chat App
 
