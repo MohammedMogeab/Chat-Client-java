@@ -2,6 +2,9 @@ package program.chatus;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -9,14 +12,13 @@ import java.util.concurrent.Executors;
 
 /**
  * ChatServer: listens on port 1234, accepts client connections,
- * and handles incoming commands/messages.
+ * and handles incoming commands/messages using DataInputStream/DataOutputStream.
  */
 public class ChatServer {
     private static final int PORT = 1234;
-    private static ExecutorService threadPool = Executors.newFixedThreadPool(10); // Adjust if needed
-
-    // Map of (username -> Socket) for all connected (online) clients
-    private static final HashMap<String, Socket> clients = new HashMap<>();
+    private static ExecutorService threadPool = Executors.newFixedThreadPool(10);
+    // Map of (username -> ClientHandler) for all connected (online) clients
+    private static final HashMap<String, ClientHandler> clients = new HashMap<>();
 
     public static void main(String[] args) {
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
@@ -35,10 +37,10 @@ public class ChatServer {
     // Inner class to handle each client connection in a separate thread
     private static class ClientHandler implements Runnable {
         private final Socket clientSocket;
-        private BufferedReader in;
-        private PrintWriter out;
-        private String clientId; // The username from the client
-        private Connection connection; // Database connection for this thread
+        private DataInputStream dataIn;
+        private DataOutputStream dataOut;
+        private String username;
+        private Connection connection;
 
         public ClientHandler(Socket socket) {
             this.clientSocket = socket;
@@ -52,179 +54,209 @@ public class ChatServer {
         @Override
         public void run() {
             try {
-                in  = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                out = new PrintWriter(clientSocket.getOutputStream(), true);
+                dataIn = new DataInputStream(new BufferedInputStream(clientSocket.getInputStream()));
+                dataOut = new DataOutputStream(new BufferedOutputStream(clientSocket.getOutputStream()));
 
-                // First line from client is the username
-                clientId = in.readLine();
-                System.out.println("Client " + clientId + " connected.");
+                // First message from client is the username
+                username = dataIn.readUTF();
+                System.out.println("Client " + username + " connected.");
 
                 // Add the client to the "online" map
                 synchronized (clients) {
-                    clients.put(clientId, clientSocket);
+                    clients.put(username, this);
                 }
 
-                // Continuously read messages from the client
-                String message;
-                while ((message = in.readLine()) != null) {
-                    System.out.println("Received from " + clientId + ": " + message);
+                // Send updated friend list to all clients
+                broadcastFriendList();
 
-                    if (message.equals("/listFriends")) {
-                        sendFriendList();
-                    } else {
-                        // Assume format "recipient: message"
-                        handlePrivateMessage(message);
+                // Continuously read messages from the client
+                while (true) {
+                    String type = dataIn.readUTF();
+                    String sender = dataIn.readUTF();
+                    String receiver = dataIn.readUTF();
+                    String ImageName=dataIn.readUTF();
+                    int length = dataIn.readInt();
+
+                    byte[] data = new byte[length];
+                    dataIn.readFully(data);
+
+                    switch (type) {
+                        case "TEXT":
+                            handleTextMessage(sender, receiver, data);
+                            break;
+                        case "IMAGE":
+                            handleImageMessage(sender, receiver, ImageName,data);
+                            break;
+                        case "VIDEO":
+                            handleVideoMessage(sender, receiver, data);
+                            break;
+                        case "FILE":
+                            handleFileMessage(sender, receiver, data);
+                            break;
                     }
                 }
             } catch (IOException | SQLException e) {
-                System.out.println("Client " + clientId + " disconnected.");
+                System.out.println("Client " + username + " disconnected.");
+                e.printStackTrace();
             } finally {
-                // Remove client from the online map
-                synchronized (clients) {
-                    clients.remove(clientId);
-                }
-                // Close resources
+                cleanup();
+            }
+        }
+
+        private void handleTextMessage(String sender, String receiver, byte[] data) throws SQLException {
+            String message = new String(data, java.nio.charset.StandardCharsets.UTF_8);
+            
+            // Ensure friendship exists
+            ensureFriendship(sender, receiver);
+            ensureFriendship(receiver, sender);
+
+            // Forward message if recipient is online
+            ClientHandler recipientHandler = clients.get(receiver);
+            if (recipientHandler != null) {
                 try {
-                    clientSocket.close();
-                    if (connection != null) {
-                        connection.close();
-                    }
-                } catch (IOException | SQLException e) {
+                    recipientHandler.dataOut.writeUTF("TEXT");
+                    recipientHandler.dataOut.writeUTF(sender);
+                    recipientHandler.dataOut.writeUTF(receiver);
+                    recipientHandler.dataOut.writeInt(data.length);
+                    recipientHandler.dataOut.write(data);
+                    recipientHandler.dataOut.flush();
+                } catch (IOException e) {
+                    System.err.println("Error sending message to " + receiver + ": " + e.getMessage());
+                }
+            } else {
+                storeOfflineMessageInDB(sender, receiver, message);
+            }
+        }
+
+        private void handleImageMessage(String sender, String receiver,String ImageName, byte[] data) throws SQLException, IOException {
+            // Validate file size (max 10MB)
+            if (data.length > 10 * 1024 * 1024) {
+                try {
+                    dataOut.writeUTF("ERROR");
+                    dataOut.writeUTF("Image size exceeds 10MB limit");
+                    dataOut.flush();
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
-            }
-        }
-
-        /**
-         * Send the friend list to the current user.
-         * We do a subquery to get the "lastMessage" for each friend, returning 1 row per friend.
-         */
-        private void sendFriendList() throws SQLException {
-            String query = """
-                SELECT u2.username,
-                       (
-                         SELECT m2.content
-                         FROM messages m2
-                         WHERE
-                           (m2.sender_id = u1.user_id AND m2.receiver_id = u2.user_id)
-                           OR
-                           (m2.sender_id = u2.user_id AND m2.receiver_id = u1.user_id)
-                         ORDER BY m2.created_at DESC
-                         LIMIT 1
-                       ) AS lastMessage
-                FROM users u1
-                JOIN friends f ON u1.user_id = f.user_id
-                JOIN users u2 ON f.friend_id = u2.user_id
-                WHERE u1.username = ?
-            """;
-
-            PreparedStatement stmt = connection.prepareStatement(query);
-            stmt.setString(1, clientId);
-            ResultSet rs = stmt.executeQuery();
-
-            List<String> friendData = new ArrayList<>();
-            while (rs.next()) {
-                String friendUsername = rs.getString("username");
-                String lastMsg        = rs.getString("lastMessage");
-                if (lastMsg == null) {
-                    lastMsg = "No messages yet";
+                    return;
                 }
-                friendData.add(friendUsername + ":" + lastMsg);
-            }
-            String joined = String.join(",", friendData);
-            out.println("USERLIST:" + joined);
-        }
 
-        /**
-         * Handles private messages in the format "recipient: message".
-         * We also ensure that both directions of friendship exist (sender->recipient and recipient->sender).
-         */
-        private void handlePrivateMessage(String rawMessage) throws SQLException, IOException {
-            if (rawMessage.startsWith("PHOTO:")) {
-                // Handle incoming photo
-                String[] parts = rawMessage.split(":", 3);
-                String recipient = parts[1];
-                int fileSize = Integer.parseInt(parts[2]);
-                // Read the photo bytes from the socket
-                byte[] fileBytes = new byte[fileSize];
-                InputStream inputStream = clientSocket.getInputStream();
-                inputStream.read(fileBytes, 0, fileSize);
+            // Forward image if recipient is online
+            ClientHandler recipientHandler = clients.get(receiver);
+            if (recipientHandler != null) {
+                try {
+                    recipientHandler.dataOut.writeUTF("IMAGE");
+                    recipientHandler.dataOut.writeUTF(sender);
+                    recipientHandler.dataOut.writeUTF(receiver);
+                    recipientHandler.dataOut.writeInt(data.length);
+                    recipientHandler.dataOut.writeUTF(ImageName);
+                    recipientHandler.dataOut.write(data);
+                    recipientHandler.dataOut.flush();
 
-                Socket recipientSocket;
-                synchronized (clients) {
-                    recipientSocket = clients.get(recipient);
-                }
-                if (recipientSocket != null) {
-                    PrintWriter recipientOut = new PrintWriter(recipientSocket.getOutputStream(), true);
-                    recipientOut.println("PHOTO:" + clientId + ":" + fileSize);
-                    OutputStream recipientOutputStream = recipientSocket.getOutputStream();
-                    recipientOutputStream.write(fileBytes);
-                    recipientOutputStream.flush();
-                } else {
-
-                    storeOfflinePhotoInDB(clientId, recipient, fileBytes);
-                    out.println("User " + recipient + " is offline. Photo stored.");
+                    // Save image to server storage
+                    Path foldersPath = Paths.get("photosChat");
+                    if (!Files.exists(foldersPath)) {
+                        Files.createDirectories(foldersPath);
+                    }
+                    String fileName = "photo_" + System.currentTimeMillis() + ".jpg";
+                    Path filePath = foldersPath.resolve(ImageName);
+                    Files.write(filePath, data);
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             } else {
 
+                // Save image to server storage
+                Path foldersPath = Paths.get("photosChat");
+                if (!Files.exists(foldersPath)) {
+                    Files.createDirectories(foldersPath);
+                }
+                String fileName = "photo_" + System.currentTimeMillis() + ".jpg";
+                Path filePath = foldersPath.resolve(ImageName);
+                Files.write(filePath, data);
+                storeOfflineImageInDB(sender, receiver, fileName);
+            }
+        }
 
-                String[] parts = rawMessage.split(":", 2);
-                if (parts.length == 2) {
-                    String recipient = parts[0].trim();
-                    String content = parts[1].trim();
+        private void handleVideoMessage(String sender, String receiver, byte[] data) throws SQLException {
+                // Validate file size (max 100MB)
+            if (data.length > 100 * 1024 * 1024) {
+                try {
+                    dataOut.writeUTF("ERROR");
+                    dataOut.writeUTF("Video size exceeds 100MB limit");
+                    dataOut.flush();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                return;
+            }
 
-                    // Insert both directions in the friends table
-                    ensureFriendship(clientId, recipient); // e.g. Bob -> David
-                    ensureFriendship(recipient, clientId); // e.g. David -> Bob
-
-                    // Forward the message if recipient is online
-                    Socket recipientSocket;
-                    synchronized (clients) {
-                        recipientSocket = clients.get(recipient);
-                    }
-                    if (recipientSocket != null) {
-                        PrintWriter recipientOut = new PrintWriter(recipientSocket.getOutputStream(), true);
-                        recipientOut.println(clientId + ": " + content);
-                    } else {
-                        // Otherwise, store as offline
-                        storeOfflineMessageInDB(clientId, recipient, content);
-                        out.println("User " + recipient + " is offline. Message stored.");
-                    }
+            // Forward video if recipient is online
+            ClientHandler recipientHandler = clients.get(receiver);
+            if (recipientHandler != null) {
+                try {
+                    recipientHandler.dataOut.writeUTF("VIDEO");
+                    recipientHandler.dataOut.writeUTF(sender);
+                    recipientHandler.dataOut.writeUTF(receiver);
+                    recipientHandler.dataOut.writeInt(data.length);
+                    recipientHandler.dataOut.write(data);
+                    recipientHandler.dataOut.flush();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 } else {
-                    out.println("Invalid message format. Use 'recipient:message'.");
+                storeOfflineVideoInDB(sender, receiver, data);
+            }
+        }
+
+        private void handleFileMessage(String sender, String receiver, byte[] data) throws SQLException {
+                // Validate file size (max 50MB)
+            if (data.length > 50 * 1024 * 1024) {
+                try {
+                    dataOut.writeUTF("ERROR");
+                    dataOut.writeUTF("File size exceeds 50MB limit");
+                    dataOut.flush();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                    return;
+                }
+
+            // Forward file if recipient is online
+            ClientHandler recipientHandler = clients.get(receiver);
+            if (recipientHandler != null) {
+                try {
+                    recipientHandler.dataOut.writeUTF("FILE");
+                    recipientHandler.dataOut.writeUTF(sender);
+                    recipientHandler.dataOut.writeUTF(receiver);
+                    recipientHandler.dataOut.writeInt(data.length);
+                    recipientHandler.dataOut.write(data);
+                    recipientHandler.dataOut.flush();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                } else {
+                storeOfflineFileInDB(sender, receiver, data);
+            }
+        }
+
+        private void broadcastFriendList() {
+            String friendList = String.join(",", clients.keySet());
+            for (ClientHandler client : clients.values()) {
+                try {
+                    client.dataOut.writeUTF("TEXT");
+                    client.dataOut.writeUTF("SERVER");
+                    client.dataOut.writeUTF("ALL");
+                    byte[] data = ("/listFriends:" + friendList).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    client.dataOut.writeInt(data.length);
+                    client.dataOut.write(data);
+                    client.dataOut.flush();
+                } catch (IOException e) {
+                    System.err.println("Error broadcasting friend list: " + e.getMessage());
                 }
             }
-
         }
 
-
-
-        private void storeOfflinePhotoInDB(String sender, String receiver, byte[] fileBytes) {
-            try {
-                String insertQuery = """
-            INSERT INTO photos (sender_id, receiver_id, photo_data, created_at)
-            VALUES (
-                (SELECT user_id FROM users WHERE username = ?),
-                (SELECT user_id FROM users WHERE username = ?),
-                ?,
-                NOW()
-            )
-        """;
-                PreparedStatement stmt = connection.prepareStatement(insertQuery);
-                stmt.setString(1, sender);
-                stmt.setString(2, receiver);
-                stmt.setBytes(3, fileBytes);
-                stmt.executeUpdate();
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        }
-
-
-        /**
-         * Inserts a row in the 'friends' table if it doesn't already exist.
-         * This is crucial to avoid duplicates. We use INSERT IGNORE (MySQL).
-         */
         private void ensureFriendship(String user, String friend) throws SQLException {
             String insertQuery = """
                 INSERT IGNORE INTO friends (user_id, friend_id)
@@ -240,9 +272,6 @@ public class ChatServer {
             }
         }
 
-        /**
-         * Inserts an offline private message into the database.
-         */
         private void storeOfflineMessageInDB(String sender, String receiver, String content) {
             try {
                 String insertQuery = """
@@ -262,6 +291,91 @@ public class ChatServer {
                 stmt.executeUpdate();
             } catch (SQLException e) {
                 e.printStackTrace();
+            }
+        }
+
+        private void storeOfflineImageInDB(String sender, String receiver,String imageData) {
+            try {
+                String insertQuery = """
+                    INSERT INTO messages (sender_id, receiver_id, content, status, created_at)
+                    VALUES (
+                        (SELECT user_id FROM users WHERE username = ?),
+                        (SELECT user_id FROM users WHERE username = ?),
+                        ?,
+                        'offline',
+                        NOW()
+                    )
+                """;
+                PreparedStatement stmt = connection.prepareStatement(insertQuery);
+                stmt.setString(1, sender);
+                stmt.setString(2, receiver);
+                stmt.setString(3, imageData);
+                stmt.executeUpdate();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void storeOfflineVideoInDB(String sender, String receiver, byte[] videoData) {
+            try {
+                String insertQuery = """
+                    INSERT INTO messages (sender_id, receiver_id, content, message, status, created_at)
+                    VALUES (
+                        (SELECT user_id FROM users WHERE username = ?),
+                        (SELECT user_id FROM users WHERE username = ?),
+                        'Video message',
+                        ?,
+                        'offline',
+                        NOW()
+                    )
+                """;
+                PreparedStatement stmt = connection.prepareStatement(insertQuery);
+                stmt.setString(1, sender);
+                stmt.setString(2, receiver);
+                stmt.setBytes(3, videoData);
+                stmt.executeUpdate();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void storeOfflineFileInDB(String sender, String receiver, byte[] fileData) {
+            try {
+                String insertQuery = """
+                    INSERT INTO messages (sender_id, receiver_id, content, message, status, created_at)
+                    VALUES (
+                        (SELECT user_id FROM users WHERE username = ?),
+                        (SELECT user_id FROM users WHERE username = ?),
+                        'File message',
+                        ?,
+                        'offline',
+                        NOW()
+                    )
+                """;
+                PreparedStatement stmt = connection.prepareStatement(insertQuery);
+                stmt.setString(1, sender);
+                stmt.setString(2, receiver);
+                stmt.setBytes(3, fileData);
+                stmt.executeUpdate();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void cleanup() {
+            try {
+                if (username != null) {
+                    synchronized (clients) {
+                        clients.remove(username);
+                    }
+                    broadcastFriendList();
+                }
+                if (dataIn != null) dataIn.close();
+                if (dataOut != null) dataOut.close();
+                if (clientSocket != null) clientSocket.close();
+                if (connection != null) connection.close();
+            } catch (IOException | SQLException e) {
+                System.err.println("Error during cleanup: " + e.getMessage());
             }
         }
     }

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import java.lang.*?>
+<?import java.util.*?>
+<?import javafx.scene.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<?import javafx.scene.image.ImageView?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.text.Font?>
+
+<?import javafx.scene.image.Image?>
+<HBox fx:id="HboxCardUser" alignment="CENTER_LEFT" prefHeight="75.0" prefWidth="314.0" style="-fx-background-color: #000;" xmlns:fx="http://javafx.com/fxml" fx:controller="program.chatus.CardUser">
+<children>
+    <ImageView fx:id="imgporfile1" fitHeight="60.0" fitWidth="52.0" pickOnBounds="true" preserveRatio="true" style="-fx-background-radius: 50;">
+        <image>
+            <Image url="@img/photo_٢٠٢٤-٠٣-٢٥_٠٠-١٥-٠٢.jpg" />
+        </image>
+        <HBox.margin>
+            <Insets left="10.0" right="10.0" />
+        </HBox.margin>
+    </ImageView>
+    <VBox fx:id="Vbox_cardUser_User_lastmessage" alignment="CENTER_LEFT" prefHeight="76.0" prefWidth="190.0">
+        <children>
+            <Label fx:id="LabelUsername" text="Mohammed Mogeab" textFill="#fcfcfc">
+                <font>
+                    <Font name="System Bold" size="14.0" />
+                </font>
+            </Label>
+            <Label fx:id="LabelLastMessage" text="كيف الحالك" textFill="#dcdcdc" />
+        </children>
+    </VBox>
+    <VBox fx:id="Vbox_CardUser_lastmessagetime" alignment="TOP_CENTER" prefHeight="21.0" prefWidth="76.0">
+        <children>
+            <Label fx:id="Labellastmessagetime" text="10 : 30" textFill="#9c9c9c">
+                <font>
+                    <Font name="System Bold" size="12.0" />
+                </font>
+            </Label>
+        </children>
+        <HBox.margin>
+            <Insets top="20.0" />
+        </HBox.margin>
+    </VBox>
+</children>
+</HBox>

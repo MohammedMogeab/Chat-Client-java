@@ -77,6 +77,7 @@ public class LoginController {
 
         // Authenticate the user
         String user = userDAO.loginUser(email);
+        System.out.println(user);
         if (user != null) {
             UserSession.getInstance().setUsername(user);
             System.out.println("Login successful! Redirecting to chat window...");

@@ -1,0 +1,85 @@
+.context-menu-root {
+    -fx-background-color: #18191C;
+    -fx-background-radius: 18;
+    -fx-padding: 24;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.25), 20, 0, 0, 4);
+    -fx-min-width: 320;
+}
+
+.context-menu-icon {
+    -fx-font-size: 38px;
+    -fx-text-fill: #fff;
+    -fx-padding: 0 0 0 0;
+}
+
+.context-menu-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #fff;
+    -fx-padding: 0 0 0 0;
+}
+
+.context-menu-subtitle {
+    -fx-font-size: 15px;
+    -fx-text-fill: #43B581;
+    -fx-padding: 0 0 0 0;
+}
+
+.context-menu-action-btn {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-min-height: 40;
+    -fx-cursor: hand;
+    -fx-text-fill: #fff;
+    -fx-background-insets: 0;
+    -fx-padding: 8 0;
+    -fx-border-width: 0;
+    -fx-alignment: center;
+    -fx-margin: 0 0 8 0;
+}
+
+.reply-btn {
+    -fx-background-color: #5865F2;
+}
+.reply-btn:hover {
+    -fx-background-color: #4752C4;
+}
+
+.forward-btn {
+    -fx-background-color: #43B581;
+}
+.forward-btn:hover {
+    -fx-background-color: #238C4C;
+}
+
+.copy-btn {
+    -fx-background-color: #FAA61A;
+    -fx-text-fill: #23272A;
+}
+.copy-btn:hover {
+    -fx-background-color: #C97B16;
+}
+
+.delete-btn {
+    -fx-background-color: #ED4245;
+}
+.delete-btn:hover {
+    -fx-background-color: #992D2F;
+}
+
+.menu-separator {
+    -fx-padding: 4 0;
+}
+
+.menu-separator .line {
+    -fx-border-color: #E0E0E0;
+    -fx-border-width: 0.5;
+    -fx-padding: 0 16;
+}
+
+/* Animation for menu appearance */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+} 

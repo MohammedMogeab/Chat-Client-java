@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.image.*?>
+<?import javafx.geometry.Insets?>
+
+<HBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="program.chatus.MessageImageController"
+      fx:id="messageContainer">
+    <padding>
+        <Insets top="5" right="5" bottom="5" left="5"/>
+    </padding>
+    <alignment>CENTER_LEFT</alignment>
+    
+    <StackPane fx:id="imageContainer" style="-fx-background-radius: 15; -fx-padding: 5;">
+        <ImageView fx:id="messageImageView"
+                  fitWidth="300"
+                  fitHeight="300"
+                  preserveRatio="true"
+                  smooth="true"
+                  pickOnBounds="true"/>
+    </StackPane>
+</HBox> 
