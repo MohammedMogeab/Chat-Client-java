@@ -1,3 +1,5 @@
+## 💬 Chat App Project - Tech Stack
+
 <div align="center">
 
 ![Java](https://img.shields.io/badge/Java-24-blue)
@@ -10,7 +12,6 @@
 
 </div>
 
-### 💬 Chat App Project - Tech Stack
 
 **Languages & Frameworks:**
 - Java
